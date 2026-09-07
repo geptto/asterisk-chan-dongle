@@ -46,6 +46,25 @@ EXPORT_DEF int is_valid_phone_number(const char *number)
 	return 1;
 }
 
+/* Like is_valid_phone_number(), but also allows '*' and '#' — valid in an
+ * ATD dial string (used to reach carrier star-codes such as *555) but never
+ * valid in an SMS destination address, so this is intentionally a separate
+ * function rather than a change to is_valid_phone_number() above. */
+#/* */
+EXPORT_DEF int is_valid_dial_string(const char *number)
+{
+	if (number[0] == '+') {
+		number++;
+	}
+	for (; *number; number++) {
+		if ((*number >= '0' && *number <= '9') || *number == '*' || *number == '#') {
+		continue;
+		}
+		return 0;
+	}
+	return 1;
+}
+
 
 #/* */
 EXPORT_DEF int get_at_clir_value (struct pvt* pvt, int clir)

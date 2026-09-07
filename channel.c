@@ -74,9 +74,9 @@ static int parse_dial_string(char * dialstr, const char** number, int * opts)
 		ast_log (LOG_WARNING, "Empty destination in chan_dongle\n");
 		return AST_CAUSE_INCOMPATIBLE_DESTINATION;
 	}
-	if (!is_valid_phone_number(dest_num))
+	if (!is_valid_dial_string(dest_num))
 	{
-		ast_log (LOG_WARNING, "Invalid destination '%s' in chan_dongle, only 0123456789*#+ABC allowed\n", dest_num);
+		ast_log (LOG_WARNING, "Invalid destination '%s' in chan_dongle, only 0123456789*#+ allowed\n", dest_num);
 		return AST_CAUSE_INCOMPATIBLE_DESTINATION;
 	}
 
