@@ -4,6 +4,7 @@
 */
 #include "ast_config.h"
 
+#include <endian.h>			/* __BYTE_ORDER __BIG_ENDIAN */
 #include <errno.h>			/* EINVAL ENOMEM E2BIG */
 #include <stdio.h>			/* snprintf() */
 
@@ -829,8 +830,24 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 				} else if ((size_t) synth_len >= sizeof(synth)) {
 					synth_len = sizeof(synth) - 1;
 				}
+				/* msg[] is later read back by ucs2_to_utf8() (see at_parse.c),
+				 * which reinterprets its raw bytes as UTF-16BE octets rather than
+				 * as host-order uint16_t values - the same convention
+				 * gsm7_unpack_decode() follows in char_conv.c (see its
+				 * __BYTE_ORDER swap around the LUT_GSM7_* lookup). On a
+				 * little-endian host, a plain `msg[k] = (uint16_t)(unsigned
+				 * char)synth[k]` places the ASCII byte in the low byte, which
+				 * ucs2_to_utf8() then reads as the *high* byte of the codepoint
+				 * (e.g. 'M' 0x4D became U+4D00 instead of U+004D).
+				 * Match gsm7_unpack_decode()'s swap so this is byte-order
+				 * correct on both LE and BE hosts. */
 				for (int k = 0; k < synth_len; ++k) {
-					msg[k] = (uint16_t) (unsigned char) synth[k];
+					uint16_t val = (uint16_t) (unsigned char) synth[k];
+#if __BYTE_ORDER == __BIG_ENDIAN
+					msg[k] = val;
+#else
+					msg[k] = ((val & 0xff) << 8) | (val >> 8);
+#endif
 				}
 				return synth_len;
 			}
