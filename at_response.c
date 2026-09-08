@@ -1279,8 +1279,6 @@ static int at_response_cmgr(struct pvt* pvt, char * str, size_t len)
 			res = at_parse_cmgr(str, len, &tpdu_type, sca, sizeof(sca), oa, sizeof(oa), scts, &mr, &st, dt, msg, &msg_len, &udh);
 			if (res < 0) {
 				ast_log(LOG_WARNING, "[%s] Error parsing incoming message: %s\n", PVT_ID(pvt), error2str(chan_dongle_err));
-				/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
-				ast_log(LOG_WARNING, "[%s] item9-debug: raw +CMGR message (len=%zu): %.*s\n", PVT_ID(pvt), len, (int) len, str);
 				goto receive_next_no_delete;
 			}
 			switch (PDUTYPE_MTI(tpdu_type)) {
