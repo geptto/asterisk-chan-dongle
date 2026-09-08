@@ -690,6 +690,8 @@ EXPORT_DEF int tpdu_parse_status_report(const uint8_t *pdu, size_t pdu_length, i
 	unsigned i = 0;
 	int field_len;
 	if (i + 2 > pdu_length) {
+		/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
+		ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at tpdu_parse_status_report() head check, i=%u pdu_length=%zu\n", i, pdu_length);
 		chan_dongle_err = E_UNKNOWN;
 		return -1;
 	}
@@ -719,6 +721,8 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 	int msg_padding = 0;
 
 	if (i + 1 > pdu_length) {
+		/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
+		ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at tpdu_parse_deliver() head check, i=%u pdu_length=%zu\n", i, pdu_length);
 		chan_dongle_err = E_UNKNOWN;
 		return -1;
 	}
@@ -732,6 +736,8 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 	i += field_len;
 
 	if (i + 2 + 7 + 1 > pdu_length) {
+		/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
+		ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at tpdu_parse_deliver() pid/dcs/timestamp check, i=%u pdu_length=%zu\n", i, pdu_length);
 		chan_dongle_err = E_UNKNOWN;
 		return -1;
 	}
