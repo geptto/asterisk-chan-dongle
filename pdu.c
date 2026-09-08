@@ -12,6 +12,15 @@
 #include "gsm7_luts.h"
 #include "error.h"
 
+/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed.
+ * Logs which of the (many) E_UNKNOWN sites in tpdu_parse_status_report()/
+ * tpdu_parse_deliver() actually fired, plus the parse offset, so a recurrence
+ * of TODO item 9's "Unknown error" WARNING can be pinned to an exact line. */
+#define E_UNKNOWN_DEBUG(site) do { \
+	ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at pdu.c:%d (%s), i=%u pdu_length=%zu\n", __LINE__, (site), i, pdu_length); \
+	chan_dongle_err = E_UNKNOWN; \
+} while (0)
+
 /* SMS-SUBMIT format
 	SCA		1..12 octet(s)		Service Center Address information element
 	  octets
@@ -690,9 +699,7 @@ EXPORT_DEF int tpdu_parse_status_report(const uint8_t *pdu, size_t pdu_length, i
 	unsigned i = 0;
 	int field_len;
 	if (i + 2 > pdu_length) {
-		/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
-		ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at tpdu_parse_status_report() head check, i=%u pdu_length=%zu\n", i, pdu_length);
-		chan_dongle_err = E_UNKNOWN;
+		E_UNKNOWN_DEBUG("status_report head check");
 		return -1;
 	}
 	*mr = pdu[i++];
@@ -721,9 +728,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 	int msg_padding = 0;
 
 	if (i + 1 > pdu_length) {
-		/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
-		ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at tpdu_parse_deliver() head check, i=%u pdu_length=%zu\n", i, pdu_length);
-		chan_dongle_err = E_UNKNOWN;
+		E_UNKNOWN_DEBUG("deliver head check");
 		return -1;
 	}
 	oa_digits = pdu[i++];
@@ -736,9 +741,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 	i += field_len;
 
 	if (i + 2 + 7 + 1 > pdu_length) {
-		/* TODO(item9-debug): temporary diagnostic logging, revert once root cause is confirmed */
-		ast_log(LOG_WARNING, "item9-debug: E_UNKNOWN at tpdu_parse_deliver() pid/dcs/timestamp check, i=%u pdu_length=%zu\n", i, pdu_length);
-		chan_dongle_err = E_UNKNOWN;
+		E_UNKNOWN_DEBUG("deliver pid/dcs/timestamp bounds check");
 		return -1;
 	}
 
@@ -804,7 +807,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 		case 0x3: /* HIGH 0011: Compressed regular with class */
 		case 0x6: /* HIGH 0110: Compressed, marked for self-destruct */
 		case 0x7: /* HIGH 0111: Compressed, marked for self-destruct with class */
-			chan_dongle_err = E_UNKNOWN;
+			E_UNKNOWN_DEBUG("dcs: compressed message class not supported");
 			return -1;
 		case 0xC: /* HIGH 1100: "Discard" MWI */
 		case 0xD: /* HIGH 1101: "Store" MWI */
@@ -815,16 +818,16 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 			/* (dsc_lo & 3): {VM, Fax, E-mail, Other} */
 			break;
 		default:
-			chan_dongle_err = E_UNKNOWN;
+			E_UNKNOWN_DEBUG("dcs: unrecognized high nibble");
 			reserved = 1;
 			break;
 		}
 		if (reserved) {
-			chan_dongle_err = E_UNKNOWN;
+			E_UNKNOWN_DEBUG("dcs: reserved bit set");
 			return -1;
 		}
 		if (alphabet == -1) {
-			chan_dongle_err = E_UNKNOWN;
+			E_UNKNOWN_DEBUG("dcs: alphabet undetermined");
 			return -1;
 		}
 	}
@@ -843,13 +846,13 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 		udl_bytes = (udl_nibbles + 1) / 2;
 	}
 	if (udl_bytes != pdu_length - i) {
-		chan_dongle_err = E_UNKNOWN;
+		E_UNKNOWN_DEBUG("udl_bytes does not match remaining pdu length");
 		return -1;
 	}
 
 	if (PDUTYPE_UDHI(tpdu_type) == PDUTYPE_UDHI_HAS_HEADER) {
 		if (i + 1 > pdu_length) {
-			chan_dongle_err = E_UNKNOWN;
+			E_UNKNOWN_DEBUG("udh: no room for udhl byte");
 			return -1;
 		}
 		udhl = pdu[i++];
@@ -862,7 +865,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 
 		/* NOTE: UDHL count octets no need calculation */
 		if (pdu_length - i < (size_t)udhl) {
-			chan_dongle_err = E_UNKNOWN;
+			E_UNKNOWN_DEBUG("udh: udhl exceeds remaining pdu");
 			return -1;
 		}
 
@@ -882,7 +885,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 				switch (iei_type) {
 				case 0x00: /* Concatenated */
 					if (iei_len != 3) {
-						chan_dongle_err = E_UNKNOWN;
+						E_UNKNOWN_DEBUG("udh: IEI 0x00 (concatenated) wrong iei_len");
 						return -1;
 					}
 					udh->ref = pdu[i++];
@@ -892,7 +895,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 					break;
 				case 0x08: /* Concatenated, 16 bit ref */
 					if (iei_len != 4) {
-						chan_dongle_err = E_UNKNOWN;
+						E_UNKNOWN_DEBUG("udh: IEI 0x08 (concatenated 16-bit ref) wrong iei_len");
 						return -1;
 					}
 					udh->ref = (pdu[i++] << 8);
@@ -903,7 +906,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 					break;
 				case 0x24: /* National Language Single Shift */
 					if (iei_len != 1) {
-						chan_dongle_err = E_UNKNOWN;
+						E_UNKNOWN_DEBUG("udh: IEI 0x24 (national language single shift) wrong iei_len");
 						return -1;
 					}
 					udh->ss = pdu[i++];
@@ -911,7 +914,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 					break;
 				case 0x25: /* National Language Locking Shift (e.g. Turkish = 1) */
 					if (iei_len != 1) {
-						chan_dongle_err = E_UNKNOWN;
+						E_UNKNOWN_DEBUG("udh: IEI 0x25 (national language locking shift) wrong iei_len");
 						return -1;
 					}
 					udh->ls = pdu[i++];
@@ -923,7 +926,7 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 					udhl -= iei_len;
 				}
 			} else {
-				chan_dongle_err = E_UNKNOWN;
+				E_UNKNOWN_DEBUG("udh: iei_len exceeds remaining udhl budget");
 				return -1;
 			}
 		}
