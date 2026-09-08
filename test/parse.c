@@ -289,6 +289,23 @@ void test_parse_cmgr()
 				.msg_utf8 = "INFO SMS 23/03, 18:10: Costo chiamata E. 0,24. Il credito è E. 48,05. Per info su eventuali opzioni attive e bonus residui chiama 40916.",
 			},
 		},
+		/* TODO item 9 regression test: a real carrier Message Waiting
+		 * Indication (DCS 0xC0, "Discard Message" group, Voicemail type,
+		 * inactive state) captured via AT+CMGR on a live deployment.
+		 * Before the fix in 6d89e3e, tpdu_parse_deliver() left `alphabet`
+		 * unset for DCS 0xC/0xD and always failed with E_UNKNOWN
+		 * ("Unknown error"). The follow-up fix in 86123c4 corrected a
+		 * UTF-16BE byte-order bug in the synthesized text (the .msg_utf8
+		 * below previously came out as CJK-range garbage on little-endian
+		 * hosts instead of readable text). */
+		{ "+CMGR: 1,,26\r\n07915500051124600409D0436650FA0400C06290702294302909CD7B5A5A9E97E961",
+			{
+				.res = 0,
+				.str = "0409D0436650FA0400C06290702294302909CD7B5A5A9E97E961",
+				.oa = "CLARO",
+				.msg_utf8 = "MWI: Voicemail message waiting: inactive",
+			},
+		},
 	};
 
 	unsigned idx = 0;
