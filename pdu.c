@@ -5,6 +5,7 @@
 #include "ast_config.h"
 
 #include <errno.h>			/* EINVAL ENOMEM E2BIG */
+#include <stdio.h>			/* snprintf() */
 
 #include "pdu.h"
 #include "helpers.h"			/* dial_digit_code() */
@@ -809,13 +810,49 @@ EXPORT_DEF int tpdu_parse_deliver(const uint8_t *pdu, size_t pdu_length, int tpd
 		case 0x7: /* HIGH 0111: Compressed, marked for self-destruct with class */
 			E_UNKNOWN_DEBUG("dcs: compressed message class not supported");
 			return -1;
-		case 0xC: /* HIGH 1100: "Discard" MWI */
-		case 0xD: /* HIGH 1101: "Store" MWI */
-			/* if 0xC then the recipient may discard message
-			 * contents, and only show notification */
-			/*inactive_active = (dcs_lo & 8);*/
+		case 0xC: /* HIGH 1100: Message Waiting Indication group, "Discard Message".
+			   * Per 3GPP TS 23.038 §4: the UD field's content is not meant to be
+			   * relied on for this variant - only the indication itself matters.
+			   * bit3 (0x8): indication active(1)/inactive(0); bit2 (0x4): reserved,
+			   * must be 0; bits1-0 (0x3): indication type (0=Voicemail, 1=Fax,
+			   * 2=Electronic Mail, 3=Other). Previously this whole 0xC/0xD group
+			   * left `alphabet` unset and always failed with a generic "Unknown
+			   * error" - including for a legitimate carrier voicemail-waiting SMS
+			   * (TODO item 9). Fixed by synthesizing a readable description of the
+			   * indication instead of attempting to decode UD as text. */
+			if (dcs_lo & 4) {
+				E_UNKNOWN_DEBUG("dcs: MWI reserved bit set");
+				return -1;
+			}
+			{
+				static const char *const mwi_types[4] = {
+					"Voicemail", "Fax", "Electronic Mail", "Other"
+				};
+				const char *mwi_type = mwi_types[dcs_lo & 3];
+				const char *mwi_state = (dcs_lo & 8) ? "active" : "inactive";
+				char synth[64];
+				int synth_len = snprintf(synth, sizeof(synth),
+					"MWI: %s message waiting: %s", mwi_type, mwi_state);
+				if (synth_len < 0) {
+					synth_len = 0;
+				} else if ((size_t) synth_len >= sizeof(synth)) {
+					synth_len = sizeof(synth) - 1;
+				}
+				for (int k = 0; k < synth_len; ++k) {
+					msg[k] = (uint16_t) (unsigned char) synth[k];
+				}
+				return synth_len;
+			}
+		case 0xD: /* HIGH 1101: Message Waiting Indication group, "Store Message",
+			   * default (7-bit) alphabet - unlike 0xC, this variant's UD field is
+			   * meant to be decoded as real text using the standard alphabet path
+			   * below. Same bit1-0 reserved check as 0xC; bit3/bits1-0 (active
+			   * state / indication type) aren't otherwise acted on here.
+			   * NOTE: this specific sub-case has not been observed in practice on
+			   * this project (only 0xC has) - included for completeness per spec,
+			   * but unverified against real traffic. */
 			reserved = (dcs_lo & 4); /* bit 2 reserved */
-			/* (dsc_lo & 3): {VM, Fax, E-mail, Other} */
+			alphabet = PDU_DCS_ALPHABET_7BIT;
 			break;
 		default:
 			E_UNKNOWN_DEBUG("dcs: unrecognized high nibble");
