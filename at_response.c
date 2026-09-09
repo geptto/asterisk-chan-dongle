@@ -265,7 +265,14 @@ static int at_response_ok (struct pvt* pvt, at_res_t res)
 	return 0;
 }
 
-static void log_cmd_response_error(const struct pvt* pvt, const at_queue_cmd_t *ecmd, const char *fmt, ...)
+/* item21: `raw`/`raw_len` is the AT command's raw response text (e.g. a
+ * "+CMS ERROR: 500" or "+CME ERROR: <n>" line, or plain "ERROR"), passed
+ * through from at_response()/at_response_error() so the network/modem's
+ * own specific error code - previously silently dropped - reaches the
+ * log alongside chan_dongle's generic per-command message. Pass NULL/0
+ * when no raw text is available (kept optional so this doesn't force
+ * every existing call site to change beyond adding the two arguments). */
+static void log_cmd_response_error(const struct pvt* pvt, const at_queue_cmd_t *ecmd, const char *raw, size_t raw_len, const char *fmt, ...)
 {
 	va_list ap;
 	char tempbuff[512];
@@ -277,6 +284,9 @@ static void log_cmd_response_error(const struct pvt* pvt, const at_queue_cmd_t *
 			vsnprintf(tempbuff, 512, fmt, ap);
 			va_end(ap);
 			ast_log(AST_LOG_DEBUG, "%s", tempbuff);
+			if (raw && raw_len > 0) {
+				ast_log(AST_LOG_DEBUG, "[%s] Raw AT error response: %.*s\n", PVT_ID(pvt), (int) raw_len, raw);
+			}
 		}
 
 		return;
@@ -286,6 +296,10 @@ static void log_cmd_response_error(const struct pvt* pvt, const at_queue_cmd_t *
 	vsnprintf(tempbuff, 512, fmt, ap);	
 	ast_log(LOG_ERROR, "%s", tempbuff);
 	va_end(ap);
+
+	if (raw && raw_len > 0) {
+		ast_log(LOG_ERROR, "[%s] Raw AT error response: %.*s\n", PVT_ID(pvt), (int) raw_len, raw);
+	}
 }
 
 /*!
@@ -295,7 +309,7 @@ static void log_cmd_response_error(const struct pvt* pvt, const at_queue_cmd_t *
  * \retval -1 error
  */
 
-static int at_response_error (struct pvt* pvt, at_res_t res)
+static int at_response_error (struct pvt* pvt, at_res_t res, const char *str, size_t len)
 {
 	const at_queue_task_t * task = at_queue_head_task(pvt);
 	const at_queue_cmd_t * ecmd = at_queue_task_cmd(task);
@@ -309,7 +323,7 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 			case CMD_AT_Z:
 			case CMD_AT_E:
 			case CMD_AT_CLCC:
-				log_cmd_response_error(pvt, ecmd, "[%s] Command '%s' failed\n", PVT_ID(pvt), at_cmd2str (ecmd->cmd));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Command '%s' failed\n", PVT_ID(pvt), at_cmd2str (ecmd->cmd));
 				/* mean disconnected from device */
 				goto e_return;
 
@@ -318,44 +332,44 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 			case CMD_AT_CCWA_SET:
 			case CMD_AT_CCWA_STATUS:
 			case CMD_AT_CNUM:
-				log_cmd_response_error(pvt, ecmd, "[%s] Command '%s' failed\n", PVT_ID(pvt), at_cmd2str (ecmd->cmd));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Command '%s' failed\n", PVT_ID(pvt), at_cmd2str (ecmd->cmd));
 				/* mean ignore error */
 				break;
 
 			case CMD_AT_CGMI:
-				log_cmd_response_error(pvt, ecmd, "[%s] Getting manufacturer info failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Getting manufacturer info failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CGMM:
-				log_cmd_response_error(pvt, ecmd, "[%s] Getting model info failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Getting model info failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CGMR:
-				log_cmd_response_error(pvt, ecmd, "[%s] Getting firmware info failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Getting firmware info failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CMEE:
-				log_cmd_response_error(pvt, ecmd, "[%s] Setting error verbosity level failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Setting error verbosity level failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CGSN:
-				log_cmd_response_error(pvt, ecmd, "[%s] Getting IMEI number failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Getting IMEI number failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CIMI:
-				log_cmd_response_error(pvt, ecmd, "[%s] Getting IMSI number failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Getting IMSI number failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CPIN:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error checking PIN state\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error checking PIN state\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_COPS_INIT:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error setting operator select parameters\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error setting operator select parameters\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CREG_INIT:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error enabling registration info\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error enabling registration info\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CREG:
@@ -377,11 +391,11 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 				break;
 /*
 			case CMD_AT_CLIP:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error enabling calling line indication\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error enabling calling line indication\n", PVT_ID(pvt));
 				goto e_return;
 */
 			case CMD_AT_CSSN:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error Supplementary Service Notification activation failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error Supplementary Service Notification activation failed\n", PVT_ID(pvt));
 				goto e_return;
 
 			case CMD_AT_CMGF:
@@ -399,7 +413,7 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 						/* continue initialization in other job at cmd CMD_AT_CSQ */
 						if (at_enqueue_initialization(task->cpvt, CMD_AT_CSQ))
 						{
-							log_cmd_response_error(pvt, ecmd, "[%s] Error querying signal strength\n", PVT_ID(pvt));
+							log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error querying signal strength\n", PVT_ID(pvt));
 							goto e_return;
 						}
 
@@ -414,17 +428,17 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 
 			case CMD_AT_A:
 			case CMD_AT_CHLD_2x:
-				log_cmd_response_error(pvt, ecmd, "[%s] Answer failed for call idx %d\n", PVT_ID(pvt), task->cpvt->call_idx);
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Answer failed for call idx %d\n", PVT_ID(pvt), task->cpvt->call_idx);
 				queue_hangup (task->cpvt->channel, 0);
 				break;
 
 			case CMD_AT_CHLD_3:
-				log_cmd_response_error(pvt, ecmd, "[%s] Can't begin conference call idx %d\n", PVT_ID(pvt), task->cpvt->call_idx);
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Can't begin conference call idx %d\n", PVT_ID(pvt), task->cpvt->call_idx);
 				queue_hangup(task->cpvt->channel, 0);
 				break;
 
 			case CMD_AT_CLIR:
-				log_cmd_response_error(pvt, ecmd, "[%s] Setting CLIR failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Setting CLIR failed\n", PVT_ID(pvt));
 				break;
 
 			case CMD_AT_CHLD_2:
@@ -434,26 +448,26 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 				}
 				/* fall through */
 			case CMD_AT_D:
-				log_cmd_response_error(pvt, ecmd, "[%s] Dial failed\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Dial failed\n", PVT_ID(pvt));
 				queue_control_channel (task->cpvt, AST_CONTROL_CONGESTION);
 				break;
 
 			case CMD_AT_DDSETEX:
-				log_cmd_response_error(pvt, ecmd, "[%s] %s (setup voice) failed\n", PVT_ID(pvt), at_cmd2str(ecmd->cmd));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] %s (setup voice) failed\n", PVT_ID(pvt), at_cmd2str(ecmd->cmd));
 				break;
 
 			case CMD_AT_CHUP:
 			case CMD_AT_CHLD_1x:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error sending hangup for call idx %d\n", PVT_ID(pvt), task->cpvt->call_idx);
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error sending hangup for call idx %d\n", PVT_ID(pvt), task->cpvt->call_idx);
 				break;
 
 			case CMD_AT_CMGR:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error reading SMS message\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error reading SMS message\n", PVT_ID(pvt));
 				at_retrieve_next_sms(&pvt->sys_chan, at_cmd_suppress_error_mode(ecmd->flags));
 				break;
 
 			case CMD_AT_CMGD:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error deleting SMS message\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error deleting SMS message\n", PVT_ID(pvt));
 				break;
 
 			case CMD_AT_CMGS:
@@ -483,11 +497,11 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 				}
 
 				ast_verb (3, "[%s] Error sending SMS message %p\n", PVT_ID(pvt), task);
-				log_cmd_response_error(pvt, ecmd, "[%s] Error sending SMS message %p %s\n", PVT_ID(pvt), task, at_cmd2str (ecmd->cmd));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error sending SMS message %p %s\n", PVT_ID(pvt), task, at_cmd2str (ecmd->cmd));
 				break;
 
 			case CMD_AT_DTMF:
-				log_cmd_response_error(pvt, ecmd, "[%s] Error sending DTMF\n", PVT_ID(pvt));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error sending DTMF\n", PVT_ID(pvt));
 				break;
 
 			case CMD_AT_COPS:
@@ -501,11 +515,11 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 
 			case CMD_AT_CUSD:
 				ast_verb (3, "[%s] Error sending USSD %p\n", PVT_ID(pvt), task);
-				log_cmd_response_error(pvt, ecmd, "[%s] Error sending USSD %p\n", PVT_ID(pvt), task);
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Error sending USSD %p\n", PVT_ID(pvt), task);
 				break;
 
 			default:
-				log_cmd_response_error(pvt, ecmd, "[%s] Received 'ERROR' for unhandled command '%s'\n", PVT_ID(pvt), at_cmd2str (ecmd->cmd));
+				log_cmd_response_error(pvt, ecmd, str, len, "[%s] Received 'ERROR' for unhandled command '%s'\n", PVT_ID(pvt), at_cmd2str (ecmd->cmd));
 				break;
 		}
 		at_queue_handle_result (pvt, res);
@@ -517,13 +531,13 @@ static int at_response_error (struct pvt* pvt, at_res_t res)
 			at_retrieve_next_sms(&pvt->sys_chan, at_cmd_suppress_error_mode(ecmd->flags));
 			break;
 		default:
-			log_cmd_response_error(pvt, ecmd, "[%s] Received 'ERROR' when expecting '%s', ignoring\n", PVT_ID(pvt), at_res2str (ecmd->res));
+			log_cmd_response_error(pvt, ecmd, str, len, "[%s] Received 'ERROR' when expecting '%s', ignoring\n", PVT_ID(pvt), at_res2str (ecmd->res));
 			break;
 		}
 	}
 	else
 	{
-		log_cmd_response_error(pvt, ecmd, "[%s] Received unexpected 'ERROR'\n", PVT_ID(pvt));
+		log_cmd_response_error(pvt, ecmd, str, len, "[%s] Received unexpected 'ERROR'\n", PVT_ID(pvt));
 	}
 
 	return 0;
@@ -1882,7 +1896,7 @@ int at_response (struct pvt* pvt, const struct iovec iov[2], int iovcnt, at_res_
 
 			case RES_CMS_ERROR:
 			case RES_ERROR:
-				return at_response_error (pvt, at_res);
+				return at_response_error (pvt, at_res, str, len);
 
 			case RES_RING:
 				return at_response_ring (pvt);
