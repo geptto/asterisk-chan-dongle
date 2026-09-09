@@ -567,11 +567,21 @@ EXPORT_DEF ssize_t pdu_build(uint8_t *buffer, size_t length, size_t *tpdulen, co
 		dst_toa = NUMBER_TYPE_INTERNATIONAL;
 		++dst;
 	} else {
-		if (strlen(dst) < 6) {
-			dst_toa = NUMBER_TYPE_NETWORKSHORT;
-		} else {
-			dst_toa = NUMBER_TYPE_UNKNOWN;
-		}
+		/* item21: previously a destination shorter than 6 digits (e.g. a
+		 * 4-digit carrier short code) got NUMBER_TYPE_NETWORKSHORT (TON=3
+		 * "Network Specific Number", NPI=9 "Private Numbering Plan") - an
+		 * unusual, rarely-recognized addressing type. Even the surrounding
+		 * code carried a standing "maybe this byte should be 0xB1 ???"
+		 * comment, so this was never a confirmed-correct value, just an
+		 * untested special case. NUMBER_TYPE_UNKNOWN (TON=0, NPI=1) is
+		 * already what's used for every longer digit-only destination and
+		 * demonstrably works for normal sends on this same connection, so
+		 * short destinations now use it too instead of the untested
+		 * NETWORKSHORT encoding. Motivating failure (not yet confirmed
+		 * fixed): sending "SAIR" to Claro Brasil's 4-digit opt-out short
+		 * code 3275 was rejected by the network with a generic
+		 * `+CMS ERROR: 500` under the old NETWORKSHORT encoding. */
+		dst_toa = NUMBER_TYPE_UNKNOWN;
 	}
 
 	/* count length of strings */
